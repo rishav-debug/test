@@ -1,0 +1,41 @@
+---
+- name: Create Linux user
+  hosts: all
+  become: yes
+  vars:
+    user_name: "deploy"
+    user_uid: 1001
+    user_groups: "sudo"
+    ssh_pub_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQ... user@example.com"
+    # Recommended: store password_hash in ansible-vault
+    # password_hash: "$6$rounds=656000$...$..."
+  tasks:
+    - name: Ensure group(s) exist
+      ansible.builtin.group:
+        name: "{{ user_groups }}"
+        state: present
+      when: user_groups is defined and (user_groups | length) > 0
+
+    - name: Ensure user exists
+      ansible.builtin.user:
+        name: "{{ user_name }}"
+        uid: "{{ user_uid | default(omit) }}"
+        groups: "{{ user_groups | default(omit) }}"
+        append: yes
+        shell: /bin/bash
+        create_home: yes
+        password: "{{ password_hash | default(omit) }}"
+
+    - name: Install authorized SSH key
+      ansible.builtin.authorized_key:
+        user: "{{ user_name }}"
+        state: present
+        key: "{{ ssh_pub_key }}"
+      when: ssh_pub_key is defined and ssh_pub_key != ""
+
+    - name: Grant passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ user_name }}"
+        content: "{{ user_name }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: '0440'
+      when: "'sudo' in (user_groups | default(''))"
